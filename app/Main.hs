@@ -89,8 +89,78 @@ clex lineno (c:cs)
 clex _ [] = []
 
 
+-- Parser
+type Token1 = String
+type Parser a = [Token1] -> [(a, [Token1])]
 
 
+pLit :: String -> Parser String
+pLit s (tok:toks)
+  | s == tok = [(s, toks)]
+  | otherwise = []
+pLit _ [] = []
+
+pVar :: Parser String
+pVar (tok:toks) = [(tok, toks)]
+pVar [] = []
+
+
+pAlt :: Parser a -> Parser a -> Parser a
+pAlt p1 p2 toks = p1 toks ++ p2 toks
+
+pHelloOrGoodBye :: Parser String
+pHelloOrGoodBye = pLit "hello" `pAlt` pLit "goodbye"
+
+pThen1 :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
+pThen1 f p1 p2 toks = do
+  (a, toks1) <- p1 toks
+  (b, toks2) <- p2 toks1
+  return (f a b, toks2)
+
+pThen :: (a -> b -> c) -> Parser a -> Parser b -> Parser c
+pThen f p1 p2 toks =
+  [(f a b, tok2) | (a, tok1) <-p1 toks, (b, tok2) <- p2 tok1]
+
+pThen2 ::  (a -> b -> c -> d) -> Parser a -> Parser b -> Parser c -> Parser d
+pThen2 f p1 p2 p3 toks = do
+  (a, toks1) <- p1 toks
+  (b, toks2) <- p2 toks1
+  (c, toks3) <- p3 toks2
+  return (f a b c, toks3)
+
+pThen3 ::  (a -> b -> c -> d -> e) -> Parser a -> Parser b -> Parser c -> Parser d -> Parser e
+pThen3 f p1 p2 p3 p4 toks = do
+  (a, toks1) <- p1 toks
+  (b, toks2) <- p2 toks1
+  (c, toks3) <- p3 toks2
+  (d, toks4) <- p4 toks3
+  return (f a b c d, toks4)
+
+pGreeting :: Parser (String, String)
+pGreeting = pThen keep_first (pThen mk_pair pHelloOrGoodBye pVar) (pLit "!")
+  where
+    mk_pair hg name = (hg, name)
+    keep_first hg_name _ = hg_name
+
+pEmpty :: a -> Parser a
+pEmpty x toks = [(x, ["..."])]
+
+pZeroOrMore :: Parser a -> Parser [a]
+pZeroOrMore p = pOneOrMore p `pAlt` pEmpty []
+
+pOneOrMore :: Parser a -> Parser [a]
+pOneOrMore p = pThen combine p (pZeroOrMore p)
+  where
+    combine a b = a:b
+
+pGreeting2 :: Parser [(String, String)]
+pGreeting2 = pZeroOrMore pGreeting
+
+pGreetingsN :: Parser Int
+pGreetingsN = pGreeting2 `pApply` length
+
+pApply :: Parser a -> (a->b) -> Parser b
+pApply p f tok =  [(f a, toks) | (a, toks) <- p tok]
 
 main :: IO ()
 main = putStrLn "main"
