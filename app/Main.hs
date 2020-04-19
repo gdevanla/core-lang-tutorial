@@ -11,6 +11,12 @@ recursive = True
 nonRecursive:: IsRec
 nonRecursive = False
 
+type CoreProgam = Program Name
+type Program a = [ScDefn a]
+
+type CoreScDefn = ScDefn Name
+type ScDefn a = (Name, [a], Expr a)
+
 type Alter a = (Int, [a], Expr a)
 
 data Expr a = EVar Name
@@ -34,11 +40,6 @@ isAtomicExpr (EVar _)  = True
 isAtomicExpr (ENum _)  = True
 isAtomicExpr e = False
 
-type Program a = [ScDefn a]
-type CoreProgam = Program Name
-
-type ScDefn a = (Name, [a], Expr a)
-type CoreScDefn = ScDefn Name
 
 --- Parser
 
@@ -93,17 +94,15 @@ clex _ [] = []
 type Token1 = String
 type Parser a = [Token1] -> [(a, [Token1])]
 
-
-pLit :: String -> Parser String
-pLit s (tok:toks)
+pLit1 :: String -> Parser String
+pLit1 s (tok:toks)
   | s == tok = [(s, toks)]
   | otherwise = []
-pLit _ [] = []
+pLit1 _ [] = []
 
-pVar :: Parser String
-pVar (tok:toks) = [(tok, toks)]
-pVar [] = []
-
+--pVar :: Parser String
+--pVar (tok:toks) = [(tok, toks)]
+--pVar [] = []
 
 pAlt :: Parser a -> Parser a -> Parser a
 pAlt p1 p2 toks = p1 toks ++ p2 toks
@@ -161,6 +160,47 @@ pGreetingsN = pGreeting2 `pApply` length
 
 pApply :: Parser a -> (a->b) -> Parser b
 pApply p f tok =  [(f a, toks) | (a, toks) <- p tok]
+
+--pProgram :: Parser a -> Parser b -> Parser a
+pProgram :: Parser a -> Parser sep -> Parser a
+pProgram = pThen keep_first
+  where
+    keep_first a _ = a
+
+pSep :: Parser String
+pSep (c:toks)
+  | c == ";" = [(c, toks)]
+  | otherwise = []
+pSep [] = []
+
+--pOneOrMoreWithSep :: Parser a -> Parser b -> Parser [a]
+--pOneOrMoreWithSep p1 p2 tok = pOneOrMore
+
+pZeroOrMoreWithSep :: Parser a -> Parser b -> Parser [a]
+pZeroOrMoreWithSep p1 p2 = pOneOrMoreWithSep p1 p2  `pAlt` pEmpty []
+
+pOneOrMoreWithSep :: Parser a -> Parser b -> Parser [a]
+pOneOrMoreWithSep p1 p2 = pThen combine (pProgram p1 p2) (pZeroOrMoreWithSep p1 p2)
+  where
+    combine a b = a:b
+
+pSat :: (String -> Bool) -> Parser String
+pSat f (tok:toks)
+  | f tok == True = [(tok, toks)]
+  | otherwise   = []
+pSat _ [] = []
+
+pLit :: String -> Parser String
+pLit s = pSat (== s)
+
+pVar :: Parser String
+pVar = pSat (not . (flip elem $ keywords))
+
+keywords :: [String]
+keywords = ["let", "letrec", " ase", "in", "of", "Pack"]
+
+
+
 
 main :: IO ()
 main = putStrLn "main"
