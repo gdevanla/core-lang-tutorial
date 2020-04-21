@@ -11,7 +11,7 @@ recursive = True
 nonRecursive:: IsRec
 nonRecursive = False
 
-type CoreProgam = Program Name
+type CoreProgram = Program Name
 type Program a = [ScDefn a]
 
 type CoreScDefn = ScDefn Name
@@ -41,6 +41,93 @@ isAtomicExpr (ENum _)  = True
 isAtomicExpr e = False
 
 
+--- Printing
+preludeDefs :: CoreProgram
+preludeDefs = let
+  s = EAp (EAp (EVar"f") (EVar "x")) (EAp (EVar "g") (EVar "x"))
+  c = EAp (EVar "f") (EAp (EVar "g") (EVar "x"))
+  t = EAp (EVar "f") (EAp (EVar "f") (EVar "x"))
+  in
+    [
+      ("I", ["x"], EVar "x"),
+      ("K", ["x",  "y"], EVar "x"),
+      ("K1", ["x", "y"], EVar "y"),
+      ("S", ["f", "g", "x"], s),
+      ("compose", ["f", "g", "x"], c),
+      ("twice" , ["f"], t)
+    ]
+
+
+-- pprExpr :: (Show a) => Expr a -> String
+-- pprExpr (EVar x) = x
+-- pprExpr (ENum x) = show x
+-- pprExpr (EAp e1 e2) = (pprExpr e1) ++ " " ++ (pprAExpr e2)
+
+
+
+-- mkMultiAp :: (Show a) => Int -> Expr a -> Expr a
+-- mkMultiAp n e1 e2 = foldl EAp e1 (take n e2s)
+--   where
+--     e2s = e2: e2s
+
+-- Abstract data type for printing
+
+data Iseq = INil
+  | IStr String
+  | IAppend Iseq Iseq
+  | IIndent Iseq
+  | INewline
+  deriving (Show)
+
+iNil :: Iseq
+iNil = INil
+
+iNewline :: Iseq
+iNewline = INewline
+
+iStr :: String -> Iseq
+iStr s = IStr s
+
+iAppend :: Iseq -> Iseq -> Iseq
+iAppend seq1 seq2 = IAppend seq1 seq2
+
+pprScDefn (name, var, expr) = pprExpr expr
+
+pprExpr :: (Expr Name) -> Iseq
+pprExpr (EVar v) = iStr v
+pprExpr (ENum n) = iStr (show n)
+pprExpr (EAp e1 e2) = (pprExpr e1) `iAppend` (iStr " ") `iAppend` (pprAExpr e2)
+pprExpr (ELet isrec defns expr) =
+  iConcat [ iStr keyword, iNewline,
+          iStr " ", iIndent (pprDefns defns), iNewline,
+          iStr "in ", pprExpr expr]
+  where
+    keyword
+      | isrec = "letrec"
+      | otherwise = "let"
+
+pprAExpr :: (Expr Name)  -> Iseq
+pprAExpr e
+ | isAtomicExpr e = pprExpr e
+ | otherwise = iConcat [iStr "(", pprExpr e, iStr ")"]
+
+pprDefns :: [(Name, Expr Name)] -> Iseq
+pprDefns defns = iInterleave sep (map pprDefn defns)
+  where
+    sep = iConcat [iStr ";", iNewline]
+
+pprDefn :: (Name, Expr Name) -> Iseq
+pprDefn (name, expr)
+  = iConcat [iStr name, iStr "=", iIndent (pprExpr expr)]
+
+iConcat :: [Iseq] -> Iseq
+iConcat (iseq:iseqs) = foldl iAppend iseq iseqs
+iConcat [] = INil
+
+iInterleave sep iseqs = foldr f INil iseqs
+  where
+    f x y = iAppend (iAppend x sep) y
+
 --- Parser
 
 type Token = (Int, String)
@@ -48,8 +135,10 @@ type Token = (Int, String)
 isWhiteSpace :: Char -> Bool
 isWhiteSpace c = c `elem` (" \t"::String)
 
-isNewLine :: Char -> Bool
-isNewLine c = c == '\n'
+isNewline :: Char -> Bool
+isNewline c = c == '\n'
+
+iIndent e = IIndent e
 
 isDigit :: Char -> Bool
 isDigit c = ord c >= 48 && ord c <= 57
@@ -77,7 +166,7 @@ clex lineno (c1:c2:cs)
     non_comment = dropWhile (/= '\n') cs
 
 clex lineno (c:cs)
-  | isNewLine c = clex (lineno + 1) cs
+  | isNewline c = clex (lineno + 1) cs
   | isWhiteSpace c = clex lineno cs
   | isDigit c = (lineno, num_token):clex lineno rest_non_digit
   | isAlpha c = (lineno, var_tok):clex lineno rest_non_alpha
