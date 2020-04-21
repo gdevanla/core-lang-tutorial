@@ -93,10 +93,26 @@ iAppend seq1 seq2 = IAppend seq1 seq2
 
 pprScDefn (name, var, expr) = pprExpr expr
 
+--type Alter a = (Int, [a], Expr a)
+
 pprExpr :: (Expr Name) -> Iseq
 pprExpr (EVar v) = iStr v
 pprExpr (ENum n) = iStr (show n)
 pprExpr (EAp e1 e2) = (pprExpr e1) `iAppend` (iStr " ") `iAppend` (pprAExpr e2)
+pprExpr (ECase expr alts) = iConcat
+        [ iStr "case"
+        , iStr " "
+        , pprExpr expr
+        , iStr " "
+        , iStr "of"
+        , iNewline
+        , iIndent (pprAlts alts)
+        ]
+pprExpr (ELam vars expr) = iConcat [
+  iStr "\\"
+  , (iConcat . map iStr) vars
+  , iStr " "
+  , pprExpr expr]
 pprExpr (ELet isrec defns expr) =
   iConcat [ iStr keyword, iNewline,
           iStr " ", iIndent (pprDefns defns), iNewline,
@@ -105,6 +121,17 @@ pprExpr (ELet isrec defns expr) =
     keyword
       | isrec = "letrec"
       | otherwise = "let"
+
+pprAlts :: [Alter Name] -> Iseq
+pprAlts alts = iConcat $ map pprAlt alts
+
+pprAlt :: Alter Name -> Iseq
+pprAlt (num, vars, expr) = iConcat [
+  iStr (show num), fold_vars, pprExpr expr]
+  where
+    fold_vars =  iInterleave (iStr " ") $ (map iStr vars)
+
+--  | ELam [a] (Expr a)
 
 pprAExpr :: (Expr Name)  -> Iseq
 pprAExpr e
@@ -127,6 +154,8 @@ iConcat [] = INil
 iInterleave sep iseqs = foldr f INil iseqs
   where
     f x y = iAppend (iAppend x sep) y
+
+
 
 --- Parser
 
